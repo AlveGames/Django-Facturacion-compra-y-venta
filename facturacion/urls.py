@@ -29,4 +29,12 @@ urlpatterns = [
     path("clientes/<int:pk>/", views.ClienteDetailView.as_view(), name="cliente_detalle"),
     path("clientes/editar/<int:pk>/", views.ClienteUpdateView.as_view(), name="cliente_editar"),
     path("clientes/eliminar/<int:pk>/", views.ClienteDeleteView.as_view(), name="cliente_eliminar"),
+
+    # ---------- PROVEEDORES: clases (VBC) · Tarea 4 ----------
+    path("proveedores/", views.ProveedorListView.as_view(), name="proveedor_lista"),
+    path("proveedores/crear/", views.ProveedorCreateView.as_view(), name="proveedor_crear"),
+    path("proveedores/editar/<int:pk>/", views.ProveedorUpdateView.as_view(), name="proveedor_editar"),
+    path("proveedores/eliminar/<int:pk>/", views.ProveedorDeleteView.as_view(), name="proveedor_eliminar"),
+    # ---------- RETO · MI PERFIL ----------
+    path("mi-perfil/", views.MiPerfilView.as_view(), name="mi_perfil"),   # sin <int:pk>: get_object() lo resuelve
 ]

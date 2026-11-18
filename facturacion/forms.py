@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import Categoria, Cliente, Marca, Producto                    # El modelo del que sale el formulario
+from .models import Categoria, Cliente, Marca, Producto, Proveedor  ,Perfil  ,Venta              # El modelo del que sale el formulario
 
 
 class MarcaForm(forms.ModelForm):                # ModelForm: formulario construido desde un modelo
@@ -104,3 +104,67 @@ class ClienteForm(forms.ModelForm):
         if not cedula.isdigit():                         # 2. isdigit(): True solo si TODOS son números
             raise forms.ValidationError("La cédula debe tener solo números.")
         return cedula                                    # que no se repita lo revisa unique=True del modelo
+
+
+
+# =====================================================================
+# TAREA 4 · PROVEEDOR (con logo y clean_ruc) · base: ClienteForm + la imagen de ProductoForm
+# =====================================================================
+class ProveedorForm(forms.ModelForm):
+    class Meta:
+        model = Proveedor
+        fields = ["ruc", "nombre", "apellido", "email", "contacto", "logo"]
+        widgets = {
+            "ruc": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0912345678001"}),
+            "nombre": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Carlos"}),
+            "apellido": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Mendoza"}),
+            "email": forms.EmailInput(attrs={"class": "form-control", "placeholder": "Ej: ventas@proveedor.com"}),
+            "contacto": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0991234567"}),
+            # La MISMA línea de "imagen" en ProductoForm, pero aquí el campo se llama logo
+            "logo": forms.ClearableFileInput(attrs={"class": "form-control", "accept": "image/*"}),
+        }
+
+    def clean_ruc(self):                                 # base: clean_cedula
+        ruc = self.cleaned_data["ruc"].strip()
+        if len(ruc) != 13:                               # 1. exactamente 13 caracteres
+            raise forms.ValidationError("El RUC debe tener exactamente 13 dígitos.")
+        if not ruc.isdigit():                            # 2. solo números
+            raise forms.ValidationError("El RUC debe tener solo números.")
+        if not ruc.endswith("001"):                      # 3. endswith(): ¿termina en "001"?
+            raise forms.ValidationError("El RUC debe terminar en 001.")
+        return ruc                                       # que no se repita lo revisa unique=True
+
+
+# =====================================================================
+# RETO · MI PERFIL (1:1 con User)
+# =====================================================================
+class PerfilForm(forms.ModelForm):
+    class Meta:
+        model = Perfil
+        fields = ["cedula", "telefono", "cargo"]         # SIN usuario: siempre es request.user (lo pone la vista)
+        widgets = {
+            "cedula": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0912345678"}),
+            "telefono": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0991234567"}),
+            "cargo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Vendedor"}),
+        }
+
+
+
+
+
+
+
+# =====================================================================
+# VENTA: cabecera (maestro)
+# =====================================================================
+class VentaForm(forms.ModelForm):
+    class Meta:
+        model = Venta
+        fields = ["cliente", "fecha_hora", "tipo_pago"]   # subtotal, iva y total los calcula el sistema
+        widgets = {
+            "cliente": forms.Select(attrs={"class": "form-select"}),
+            # type="datetime-local" → el navegador muestra un calendario con hora
+            "fecha_hora": forms.DateTimeInput(attrs={"class": "form-control", "type": "datetime-local"},
+                                              format="%Y-%m-%dT%H:%M"),
+            "tipo_pago": forms.Select(attrs={"class": "form-select"}),   # las opciones salen de TipoPago
+        }

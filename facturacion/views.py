@@ -6,9 +6,9 @@ from django.shortcuts import redirect,render, get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView   # las 5 genéricas
 
-from .forms import CategoriaForm, ClienteForm, MarcaForm, ProductoForm
+from .forms import CategoriaForm, ClienteForm, MarcaForm, PerfilForm, ProductoForm, ProveedorForm
 from .mixins import UsuarioRegistroMixin
-from .models import Categoria, Cliente, Marca, Producto                             # Nuestro modelo
+from .models import Categoria, Cliente, Marca, Perfil, Producto, Proveedor                            # Nuestro modelo
 
 
 # =====================================================================
@@ -345,3 +345,94 @@ class ClienteDeleteView(LoginRequiredMixin, DeleteView):  # ELIMINAR
             return redirect("facturacion:cliente_lista")
         messages.success(self.request, f"Cliente «{nombre}» eliminado.")
         return respuesta
+
+
+
+
+
+# =====================================================================
+# TAREA 4 · PROVEEDORES · VBC (base: Clientes + la foto de Productos)
+# =====================================================================
+
+class ProveedorListView(LoginRequiredMixin, ListView):    # LISTAR · con miniatura del logo
+    model = Proveedor
+    template_name = "facturacion/proveedor_lista.html"
+    context_object_name = "proveedores"
+    paginate_by = 5
+    extra_context = {"titulo": "Proveedores"}
+
+    def get_queryset(self):
+        proveedores = super().get_queryset()
+        q = self.request.GET.get("q", "")
+        if q:                                              # busca por nombre, apellido O RUC
+            proveedores = proveedores.filter(
+                Q(nombre__icontains=q) | Q(apellido__icontains=q) | Q(ruc__icontains=q)
+            )
+        return proveedores
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto["q"] = self.request.GET.get("q", "")
+        return contexto
+
+
+class ProveedorCreateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, CreateView):   # CREAR
+    # La VBC pasa request.FILES al formulario sola: solo falta el enctype en el template
+    model = Proveedor
+    form_class = ProveedorForm
+    template_name = "facturacion/proveedor_form.html"
+    success_url = reverse_lazy("facturacion:proveedor_lista")
+    success_message = "Proveedor «%(nombre)s %(apellido)s» creado."
+    extra_context = {"titulo": "Nuevo proveedor", "boton": "Guardar"}
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Revisa los campos marcados en rojo.")
+        return super().form_invalid(form)
+
+
+class ProveedorUpdateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, UpdateView):   # EDITAR
+    model = Proveedor
+    form_class = ProveedorForm
+    template_name = "facturacion/proveedor_form.html"      # muestra el logo actual y deja cambiarlo o quitarlo
+    success_url = reverse_lazy("facturacion:proveedor_lista")
+    success_message = "Proveedor «%(nombre)s %(apellido)s» actualizado."
+    extra_context = {"titulo": "Editar proveedor", "boton": "Actualizar"}
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Revisa los campos marcados en rojo.")
+        return super().form_invalid(form)
+
+
+class ProveedorDeleteView(LoginRequiredMixin, DeleteView):    # ELIMINAR
+    model = Proveedor
+    template_name = "facturacion/proveedor_eliminar.html"
+    context_object_name = "proveedor"
+    success_url = reverse_lazy("facturacion:proveedor_lista")
+
+    def form_valid(self, form):
+        nombre = str(self.object)
+        try:
+            respuesta = super().form_valid(form)
+        except ProtectedError:                             # Compra.proveedor usa PROTECT: con compras no se borra
+            messages.error(self.request, f"No se puede eliminar a «{nombre}»: tiene compras registradas.")
+            return redirect("facturacion:proveedor_lista")
+        messages.success(self.request, f"Proveedor «{nombre}» eliminado.")
+        return respuesta
+
+
+# =====================================================================
+# RETO · MI PERFIL con UpdateView (sin <int:pk> en la URL)
+# =====================================================================
+
+class MiPerfilView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, UpdateView):
+    model = Perfil
+    form_class = PerfilForm
+    template_name = "facturacion/mi_perfil.html"
+    success_url = reverse_lazy("facturacion:mi_perfil")    # vuelve a la MISMA página
+    success_message = "Tu perfil se actualizó correctamente."
+    extra_context = {"titulo": "Mi perfil"}
+
+    def get_object(self, queryset=None):                   # en vez de buscar por pk...
+        # ...el perfil del usuario conectado. Si no existe, lo crea vacío (creado = True)
+        perfil, creado = Perfil.objects.get_or_create(usuario=self.request.user)
+        return perfil
