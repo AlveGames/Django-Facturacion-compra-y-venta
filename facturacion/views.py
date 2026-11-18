@@ -1,14 +1,14 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin      # exige sesión
 from django.contrib.messages.views import SuccessMessageMixin  # mensaje de éxito automático
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Q
 from django.shortcuts import redirect,render, get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView   # las 5 genéricas
 
-from .forms import MarcaForm, ProductoForm
+from .forms import CategoriaForm, ClienteForm, MarcaForm, ProductoForm
 from .mixins import UsuarioRegistroMixin
-from .models import Marca, Producto                               # Nuestro modelo
+from .models import Categoria, Cliente, Marca, Producto                             # Nuestro modelo
 
 
 # =====================================================================
@@ -212,4 +212,136 @@ class MarcaDeleteView(LoginRequiredMixin, DeleteView):    # ELIMINAR · GET preg
             messages.error(self.request, f"No se puede eliminar «{nombre}»: tiene productos. Desactívala en su lugar.")
             return redirect("facturacion:marca_lista")
         messages.success(self.request, f"Marca «{nombre}» eliminada.")
+        return respuesta
+
+
+
+
+
+# =====================================================================
+# TAREA 2 · CATEGORÍAS · VBC (copia de Marcas)
+# =====================================================================
+
+class CategoriaListView(LoginRequiredMixin, ListView):    # LISTAR · solo GET
+    model = Categoria
+    template_name = "facturacion/categoria_lista.html"
+    context_object_name = "categorias"                     # en el HTML: {% for categoria in categorias %}
+    extra_context = {"titulo": "Categorías"}
+
+    def get_queryset(self):                                # ¿QUÉ registros se muestran?
+        categorias = super().get_queryset()
+        categorias = categorias.prefetch_related("productos")   # N:M: trae los productos en UNA consulta extra
+        q = self.request.GET.get("q", "")                  # buscador: ?q=lac
+        if q:
+            categorias = categorias.filter(nombre__icontains=q)
+        return categorias
+
+    def get_context_data(self, **kwargs):                  # + lo buscado, para que el buscador no se borre
+        contexto = super().get_context_data(**kwargs)
+        contexto["q"] = self.request.GET.get("q", "")
+        return contexto
+
+
+class CategoriaCreateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, CreateView):   # CREAR
+    model = Categoria
+    form_class = CategoriaForm
+    template_name = "facturacion/categoria_form.html"
+    success_url = reverse_lazy("facturacion:categoria_lista")
+    success_message = "Categoría «%(nombre)s» creada."
+    extra_context = {"titulo": "Nueva categoría", "boton": "Guardar"}
+
+
+class CategoriaUpdateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, UpdateView):   # EDITAR
+    model = Categoria
+    form_class = CategoriaForm
+    template_name = "facturacion/categoria_form.html"      # el mismo de crear
+    success_url = reverse_lazy("facturacion:categoria_lista")
+    success_message = "Categoría «%(nombre)s» actualizada."
+    extra_context = {"titulo": "Editar categoría", "boton": "Actualizar"}
+
+
+class CategoriaDeleteView(LoginRequiredMixin, DeleteView):    # ELIMINAR
+    # SIN try/except: Producto.categorias es N:M, así que solo se borran los pares de la tabla
+    # intermedia (facturacion_producto_categorias). Los productos siguen existiendo.
+    model = Categoria
+    template_name = "facturacion/categoria_eliminar.html"
+    context_object_name = "categoria"
+    success_url = reverse_lazy("facturacion:categoria_lista")
+
+    def form_valid(self, form):                            # solo para el mensaje verde
+        messages.success(self.request, f"Categoría «{self.object.nombre}» eliminada.")
+        return super().form_valid(form)                    # DELETE + redirect
+
+
+# =====================================================================
+# TAREA 3 · CLIENTES · VBC (base: Productos + el buscador con Q)
+# =====================================================================
+
+class ClienteListView(LoginRequiredMixin, ListView):      # LISTAR · paginado y con buscador
+    model = Cliente
+    template_name = "facturacion/cliente_lista.html"
+    context_object_name = "clientes"
+    paginate_by = 5                                        # 5 por página → envía page_obj al HTML
+    extra_context = {"titulo": "Clientes"}
+
+    def get_queryset(self):
+        clientes = super().get_queryset()                  # ordenados por apellidos y nombres (Meta)
+        q = self.request.GET.get("q", "")
+        if q:
+            # Q(...) | Q(...) = "esto O aquello" → WHERE apellidos LIKE '%q%' OR cedula LIKE '%q%'
+            clientes = clientes.filter(Q(apellidos__icontains=q) | Q(cedula__icontains=q))
+        return clientes
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto["q"] = self.request.GET.get("q", "")      # para el buscador y los enlaces de página
+        return contexto
+
+
+class ClienteCreateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, CreateView):   # CREAR
+    model = Cliente
+    form_class = ClienteForm                               # con clean_cedula
+    template_name = "facturacion/cliente_form.html"
+    success_url = reverse_lazy("facturacion:cliente_lista")
+    success_message = "Cliente «%(apellidos)s %(nombres)s» creado."   # usa dos campos del formulario
+    extra_context = {"titulo": "Nuevo cliente", "boton": "Guardar"}
+
+    def form_invalid(self, form):                          # POST con errores: mensaje rojo + formulario con errores
+        messages.error(self.request, "Revisa los campos marcados en rojo.")
+        return super().form_invalid(form)
+
+
+class ClienteUpdateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, UpdateView):   # EDITAR
+    model = Cliente
+    form_class = ClienteForm
+    template_name = "facturacion/cliente_form.html"
+    success_url = reverse_lazy("facturacion:cliente_lista")
+    success_message = "Cliente «%(apellidos)s %(nombres)s» actualizado."
+    extra_context = {"titulo": "Editar cliente", "boton": "Actualizar"}
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Revisa los campos marcados en rojo.")
+        return super().form_invalid(form)
+
+
+class ClienteDetailView(LoginRequiredMixin, DetailView):  # VER UNO: sus datos + sus ventas
+    model = Cliente
+    template_name = "facturacion/cliente_detalle.html"
+    context_object_name = "cliente"                        # en el HTML: cliente.ventas.all (related_name="ventas")
+
+
+class ClienteDeleteView(LoginRequiredMixin, DeleteView):  # ELIMINAR
+    model = Cliente
+    template_name = "facturacion/cliente_eliminar.html"
+    context_object_name = "cliente"
+    success_url = reverse_lazy("facturacion:cliente_lista")
+
+    def form_valid(self, form):
+        nombre = str(self.object)                          # "Pérez Ana" (el __str__ del modelo)
+        try:
+            respuesta = super().form_valid(form)           # DELETE + redirect
+        except ProtectedError:                             # Venta.cliente usa PROTECT: un cliente con ventas no se borra
+            messages.error(self.request, f"No se puede eliminar a «{nombre}»: tiene ventas registradas.")
+            return redirect("facturacion:cliente_lista")
+        messages.success(self.request, f"Cliente «{nombre}» eliminado.")
         return respuesta

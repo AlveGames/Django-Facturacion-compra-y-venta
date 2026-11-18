@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import Marca, Producto                     # El modelo del que sale el formulario
+from .models import Categoria, Cliente, Marca, Producto                    # El modelo del que sale el formulario
 
 
 class MarcaForm(forms.ModelForm):                # ModelForm: formulario construido desde un modelo
@@ -56,3 +56,51 @@ class ProductoForm(forms.ModelForm):
         if precio <= 0:
             raise forms.ValidationError("El precio debe ser mayor que 0.")
         return precio
+
+
+
+
+# =====================================================================
+# TAREA 2 · CATEGORÍA (copia de MarcaForm + descripción)
+# =====================================================================
+class CategoriaForm(forms.ModelForm):
+    class Meta:
+        model = Categoria
+        fields = ["nombre", "descripcion", "activo"]     # user y fechas NO van: los llena el sistema
+        labels = {"nombre": "Nombre de la categoría"}
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Lácteos"}),
+            "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),   # Textarea: caja de varias líneas
+            "activo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+    def clean_nombre(self):                              # igual que en MarcaForm
+        nombre = self.cleaned_data["nombre"].strip()
+        if len(nombre) < 3:
+            raise forms.ValidationError("El nombre debe tener al menos 3 letras.")
+        return nombre[0].upper() + nombre[1:]            # solo la primera letra en mayúscula
+
+
+# =====================================================================
+# TAREA 3 · CLIENTE (con clean_cedula)
+# =====================================================================
+class ClienteForm(forms.ModelForm):
+    class Meta:
+        model = Cliente
+        fields = ["cedula", "nombres", "apellidos", "email", "telefono", "direccion"]
+        widgets = {
+            "cedula": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0912345678"}),
+            "nombres": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Ana María"}),
+            "apellidos": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Pérez López"}),
+            "email": forms.EmailInput(attrs={"class": "form-control", "placeholder": "Ej: ana@correo.com"}),
+            "telefono": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: 0991234567"}),
+            "direccion": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Av. 9 de Octubre"}),
+        }
+
+    def clean_cedula(self):                              # base: clean_precio de ProductoForm
+        cedula = self.cleaned_data["cedula"].strip()
+        if len(cedula) != 10:                            # 1. exactamente 10 caracteres
+            raise forms.ValidationError("La cédula debe tener exactamente 10 dígitos.")
+        if not cedula.isdigit():                         # 2. isdigit(): True solo si TODOS son números
+            raise forms.ValidationError("La cédula debe tener solo números.")
+        return cedula                                    # que no se repita lo revisa unique=True del modelo

@@ -17,4 +17,16 @@ urlpatterns = [
     path("productos/<int:pk>/", views.ProductoDetailView.as_view(), name="producto_detalle"),
     path("productos/eliminar/<int:pk>/", views.ProductoDeleteView.as_view(), name="producto_eliminar"),
 
+
+    # ---------- CATEGORÍAS: clases (VBC) · Tarea 2 ----------
+    path("categorias/", views.CategoriaListView.as_view(), name="categoria_lista"),
+    path("categorias/crear/", views.CategoriaCreateView.as_view(), name="categoria_crear"),
+    path("categorias/editar/<int:pk>/", views.CategoriaUpdateView.as_view(), name="categoria_editar"),
+    path("categorias/eliminar/<int:pk>/", views.CategoriaDeleteView.as_view(), name="categoria_eliminar"),
+    # ---------- CLIENTES: clases (VBC) · Tarea 3 ----------
+    path("clientes/", views.ClienteListView.as_view(), name="cliente_lista"),
+    path("clientes/crear/", views.ClienteCreateView.as_view(), name="cliente_crear"),
+    path("clientes/<int:pk>/", views.ClienteDetailView.as_view(), name="cliente_detalle"),
+    path("clientes/editar/<int:pk>/", views.ClienteUpdateView.as_view(), name="cliente_editar"),
+    path("clientes/eliminar/<int:pk>/", views.ClienteDeleteView.as_view(), name="cliente_eliminar"),
 ]
