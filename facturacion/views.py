@@ -150,3 +150,66 @@ class ProductoDeleteView(LoginRequiredMixin, DeleteView):  # ELIMINAR
             return redirect("facturacion:producto_lista")
         messages.success(self.request, f"Producto «{nombre}» eliminado.")
         return respuesta
+
+
+
+
+# =====================================================================
+# TAREA 1 · MARCAS · Vistas Basadas en Clases (VBC)
+# Base: Productos (4.2 a 4.6). Todas llevan LoginRequiredMixin PRIMERO.
+# =====================================================================
+
+class MarcaListView(LoginRequiredMixin, ListView):        # LISTAR · solo GET
+    model = Marca                                          # ¿qué tabla? facturacion_marca
+    template_name = "facturacion/marca_lista.html"         # ¿qué HTML? (el mismo de antes)
+    context_object_name = "marcas"                         # en el HTML: {% for marca in marcas %}
+    extra_context = {"titulo": "Marcas"}                   # dato fijo → {{ titulo }}
+
+    def get_queryset(self):                                # ¿QUÉ registros se muestran?
+        marcas = super().get_queryset()                    # lo normal: Marca.objects.all() (A → Z por el Meta)
+        q = self.request.GET.get("q", "")                  # GET: lo escrito en el buscador (?q=sam)
+        if q:                                              # si buscó algo...
+            marcas = marcas.filter(nombre__icontains=q)    # ...solo las que contienen ese texto
+        return marcas
+
+    def get_context_data(self, **kwargs):                  # ¿qué datos EXTRA recibe el HTML?
+        contexto = super().get_context_data(**kwargs)      # lo que ListView ya armó (marcas, titulo)
+        contexto["q"] = self.request.GET.get("q", "")      # + lo buscado, para que el buscador no se borre
+        return contexto
+
+
+class MarcaCreateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, CreateView):   # CREAR
+    # GET: muestra MarcaForm vacío · POST: valida → UsuarioRegistroMixin pone user → guarda → redirige
+    model = Marca
+    form_class = MarcaForm                                 # nuestro formulario (con clean_nombre)
+    template_name = "facturacion/marca_form.html"
+    success_url = reverse_lazy("facturacion:marca_lista")  # reverse_lazy: la URL se calcula cuando se usa
+    success_message = "Marca «%(nombre)s» creada."         # mensaje verde. %(nombre)s = el campo nombre
+    extra_context = {"titulo": "Nueva marca", "boton": "Guardar"}
+
+
+class MarcaUpdateView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin, UpdateView):   # EDITAR
+    # GET: busca la marca por el pk de la URL y muestra el formulario LLENO · POST: valida y hace UPDATE
+    model = Marca
+    form_class = MarcaForm
+    template_name = "facturacion/marca_form.html"          # el mismo template de crear
+    success_url = reverse_lazy("facturacion:marca_lista")
+    success_message = "Marca «%(nombre)s» actualizada."
+    extra_context = {"titulo": "Editar marca", "boton": "Actualizar"}
+
+
+class MarcaDeleteView(LoginRequiredMixin, DeleteView):    # ELIMINAR · GET pregunta, POST borra
+    model = Marca
+    template_name = "facturacion/marca_eliminar.html"
+    context_object_name = "marca"                          # en el HTML: {{ marca.nombre }}
+    success_url = reverse_lazy("facturacion:marca_lista")
+
+    def form_valid(self, form):                            # se ejecuta al confirmar (POST)
+        nombre = self.object.nombre                        # self.object = la marca a eliminar
+        try:
+            respuesta = super().form_valid(form)           # DELETE + redirect
+        except ProtectedError:                             # Producto.marca usa PROTECT: si tiene productos, no se borra
+            messages.error(self.request, f"No se puede eliminar «{nombre}»: tiene productos. Desactívala en su lugar.")
+            return redirect("facturacion:marca_lista")
+        messages.success(self.request, f"Marca «{nombre}» eliminada.")
+        return respuesta

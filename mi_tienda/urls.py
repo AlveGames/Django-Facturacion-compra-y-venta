@@ -14,6 +14,8 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf import settings                    # para leer MEDIA_URL y MEDIA_ROOT
+from django.conf.urls.static import static          # sirve los archivos de /media/ en desarrollo
 from django.contrib import admin
 from django.urls import include, path
 from . import views
@@ -27,4 +29,8 @@ urlpatterns = [
     path("registro/", views.registro, name="registro"),
      # Todo lo que empiece con "facturacion/" lo atiende facturacion/urls.py
     path("facturacion/", include("facturacion.urls")),
+    
 ]
+# Solo en desarrollo (DEBUG=True): /media/productos/foto.jpg muestra el archivo de MEDIA_ROOT
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

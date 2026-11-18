@@ -51,7 +51,7 @@ class TipoPago(models.TextChoices):
 # =====================================================================
 # CATÁLOGO
 # =====================================================================
-class Categoria(models.Model):                     # Hereda de ModeloBase (y este de models.Model)
+class Categoria(ModeloBase):                     # Hereda de ModeloBase (y este de models.Model)
    
     nombre = models.CharField(max_length=60, unique=True)
     descripcion = models.TextField("Descripción", blank=True)
