@@ -37,4 +37,11 @@ urlpatterns = [
     path("proveedores/eliminar/<int:pk>/", views.ProveedorDeleteView.as_view(), name="proveedor_eliminar"),
     # ---------- RETO · MI PERFIL ----------
     path("mi-perfil/", views.MiPerfilView.as_view(), name="mi_perfil"),   # sin <int:pk>: get_object() lo resuelve
+
+    path("ventas/", views.VentaListView.as_view(), name="venta_lista"),
+    path("ventas/crear/", views.VentaCreateView.as_view(), name="venta_crear"),
+    path("ventas/<int:pk>/", views.VentaDetailView.as_view(), name="venta_detalle"),
+    path("ventas/editar/<int:pk>/", views.VentaUpdateView.as_view(), name="venta_editar"),
+    path("ventas/eliminar/<int:pk>/", views.VentaDeleteView.as_view(), name="venta_eliminar"),
+
 ]

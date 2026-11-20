@@ -1,14 +1,16 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin      # exige sesión
 from django.contrib.messages.views import SuccessMessageMixin  # mensaje de éxito automático
+from django.db import transaction   
 from django.db.models import ProtectedError, Q
-from django.shortcuts import redirect,render, get_object_or_404
-from django.urls import reverse_lazy
+from django.http import HttpResponseRedirect
+from django.shortcuts import redirect,render, get_object_or_404 
+from django.urls import reverse,reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView   # las 5 genéricas
 
-from .forms import CategoriaForm, ClienteForm, MarcaForm, PerfilForm, ProductoForm, ProveedorForm
+from .forms import CategoriaForm, ClienteForm, DetalleVentaFormSet, MarcaForm, PerfilForm, ProductoForm, ProveedorForm, VentaForm
 from .mixins import UsuarioRegistroMixin
-from .models import Categoria, Cliente, Marca, Perfil, Producto, Proveedor                            # Nuestro modelo
+from .models import Categoria, Cliente, Marca, Perfil, Producto, Proveedor, Venta, DetalleVenta  ,TipoPago, IVA_TARIFA  # Nuestro modelo
 
 
 # =====================================================================
@@ -436,3 +438,149 @@ class MiPerfilView(LoginRequiredMixin, UsuarioRegistroMixin, SuccessMessageMixin
         # ...el perfil del usuario conectado. Si no existe, lo crea vacío (creado = True)
         perfil, creado = Perfil.objects.get_or_create(usuario=self.request.user)
         return perfil
+
+
+
+
+    
+
+
+
+
+
+
+
+class VentaListView(LoginRequiredMixin, ListView):
+    model = Venta
+    template_name = "facturacion/venta_lista.html"
+    context_object_name = "ventas"
+    paginate_by = 10
+    extra_context = {"titulo": "Ventas", "tipos_pago": TipoPago.choices}   # opciones para el filtro
+
+    def get_queryset(self):
+        ventas = super().get_queryset().select_related("cliente")   # trae el cliente en el mismo JOIN
+        q = self.request.GET.get("q", "")
+        tipo = self.request.GET.get("tipo_pago", "")
+        if q:   # Q(...) | Q(...) = condición con OR: por apellido O por cédula
+            ventas = ventas.filter(Q(cliente__apellidos__icontains=q) | Q(cliente__cedula__icontains=q))
+        if tipo:
+            ventas = ventas.filter(tipo_pago=tipo)
+        return ventas
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto["q"] = self.request.GET.get("q", "")
+        contexto["tipo_pago"] = self.request.GET.get("tipo_pago", "")
+        return contexto
+    
+
+
+
+
+
+
+
+
+
+class VentaDetallesMixin:
+    """Lo que COMPARTEN crear y editar una venta: cabecera (form) + filas (formset)."""
+    model = Venta
+    form_class = VentaForm
+    template_name = "facturacion/venta_form.html"
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)      # trae "form" (la cabecera)
+        if "detalles" not in contexto:                     # en GET el formset todavía no existe...
+            contexto["detalles"] = DetalleVentaFormSet(instance=self.object)   # ...lo creamos (vacío o lleno)
+        return contexto
+
+    def post(self, request, *args, **kwargs):              # REEMPLAZA el post() normal de la vista
+        form = self.get_form()                             # 1. cabecera con request.POST
+        detalles = DetalleVentaFormSet(request.POST, instance=self.object)   # 2. filas con request.POST
+        if form.is_valid() and detalles.is_valid():        # 3. ¿las DOS partes están bien?
+            return self.form_valid(form, detalles)
+        return self.form_invalid(form, detalles)
+
+    def form_valid(self, form, detalles):
+        with transaction.atomic():                         # TODO o NADA: si algo falla, se deshace todo
+            if self.object:                                # al EDITAR: devolver lo que la venta tenía
+                self.object.devolver_stock()
+            form.instance.user = self.request.user
+            self.object = form.save()                      # INSERT o UPDATE de la cabecera
+            self.guardar_detalles(detalles)                # INSERT / UPDATE / DELETE de las filas
+            self.object.descontar_stock()                  # saca de bodega lo vendido
+            self.object.calcular_totales()                 # subtotal, IVA y total
+        messages.success(self.request, f"{self.object} guardada. Total: ${self.object.total}")
+        return HttpResponseRedirect(self.get_success_url())
+
+    def guardar_detalles(self, detalles):
+        detalles.instance = self.object                    # las filas pertenecen a ESTA venta
+        filas = detalles.save(commit=False)                # objetos nuevos o cambiados, SIN guardar todavía
+        for fila in detalles.deleted_objects:              # filas con la casilla "Quitar"
+            fila.delete()
+        cambio_producto = {obj.pk for obj, campos in detalles.changed_objects if "producto" in campos}
+        for fila in filas:
+            if fila.pk is None or fila.pk in cambio_producto:   # fila nueva o con otro producto...
+                fila.precio = fila.producto.precio              # ...toma el precio ACTUAL del producto
+            fila.user = self.request.user
+            fila.save()
+
+    def form_invalid(self, form, detalles):
+        messages.error(self.request, "Revisa los datos de la venta.")
+        # volvemos a dibujar la página con la cabecera Y las filas, con sus errores
+        return self.render_to_response(self.get_context_data(form=form, detalles=detalles))
+
+    def get_success_url(self):
+        return reverse("facturacion:venta_detalle", kwargs={"pk": self.object.pk})   # a la factura
+
+
+
+
+class VentaCreateView(LoginRequiredMixin, VentaDetallesMixin, CreateView):   # CREAR
+    extra_context = {"titulo": "Nueva venta", "boton": "Guardar venta"}
+
+    def post(self, request, *args, **kwargs):
+        self.object = None                                 # CreateView: aún no hay venta
+        return super().post(request, *args, **kwargs)      # sigue al post() del mixin
+
+
+
+class VentaDetailView(LoginRequiredMixin, DetailView):     # VER (la factura)
+    model = Venta
+    template_name = "facturacion/venta_detalle.html"
+    context_object_name = "venta"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("cliente", "user").prefetch_related("detalles__producto")
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto["iva_porcentaje"] = IVA_TARIFA * 100      # 15
+        return contexto
+
+
+
+
+    
+class VentaUpdateView(LoginRequiredMixin, VentaDetallesMixin, UpdateView):   # EDITAR
+    extra_context = {"titulo": "Editar venta", "boton": "Actualizar venta"}
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()                    # UpdateView: la venta del <int:pk>
+        return super().post(request, *args, **kwargs)
+
+
+
+
+class VentaDeleteView(LoginRequiredMixin, DeleteView):     # ELIMINAR
+    model = Venta
+    template_name = "facturacion/venta_eliminar.html"
+    context_object_name = "venta"
+    success_url = reverse_lazy("facturacion:venta_lista")
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            self.object.devolver_stock()                   # 1. los productos regresan a la bodega
+            respuesta = super().form_valid(form)           # 2. DELETE de la venta (CASCADE borra sus detalles)
+        messages.success(self.request, "Venta eliminada y stock devuelto.")
+        return respuesta
